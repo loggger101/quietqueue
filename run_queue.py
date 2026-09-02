@@ -21,6 +21,13 @@ CAMP = os.path.join(ROOT, "campaign")
 LEDGER = os.path.join(CAMP, "results.csv")
 
 # best case first, then work outward; cheapest cell first within a destination
+#
+# ⚠️  THIS IS THE 20-CELL CAMPAIGN'S FIVE, NOT EVERY DESTINATION THE MODEL HAS.
+# `mars_orbit` (calc 1.18.0) and `geo` (calc 1.19.0) are missing on purpose:
+# this list is what campaign/README.md pins its stamps to, and adding two
+# destinations turns a 26.1 h campaign into a 28-cell one of roughly 35 h.
+# Widening it is a decision, not a fix.  `master.DELIVERY_DESTINATIONS` is the
+# live list if you want all of them.
 DESTS = ["cislunar", "lunar_surface", "leo", "mars_surface", "earth_surface"]
 CELLS = [("raw", "off"), ("raw", "on"), ("benef", "off"), ("benef", "on")]
 
