@@ -28,6 +28,11 @@ QUEUE = [(d, o, s) for d in DESTS for (o, s) in CELLS]
 
 
 def done_cells():
+    """Cell names already recorded in the ledger with `rc == 0`.
+
+    Only rc 0 counts as done, so a failed cell is retried on the next run rather
+    than silently skipped for the rest of the campaign.
+    """
     done = set()
     if not os.path.exists(LEDGER) or os.path.getsize(LEDGER) == 0:
         return done
@@ -39,6 +44,12 @@ def done_cells():
 
 
 def main():
+    """Run every outstanding cell in order, one subprocess each.
+
+    A failed cell does NOT stop the queue: over a campaign measured in days, one
+    cell that cannot build is worth far less than the nineteen behind it, and
+    the ledger records the failure for a later retry.
+    """
     args = sys.argv[1:]
     only = []
     if "--only" in args:

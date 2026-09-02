@@ -31,6 +31,14 @@ def current_cell():
 
 
 def main():
+    """Sample every 20 s until killed, one CSV row per sample.
+
+    Records TOTAL python RSS rather than one process's, because Stage 4 runs a
+    worker pool and the interesting number is the machine's footprint. ⚠️  It
+    counts ITSELF and any analysis process running alongside, which is how two
+    apparent peaks of 11.54 and 10.74 GB turned out to be measurement
+    contamination rather than the pipeline.
+    """
     new = not os.path.exists(OUT) or os.path.getsize(OUT) == 0
     with open(OUT, "a", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
