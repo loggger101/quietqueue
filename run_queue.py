@@ -6,9 +6,9 @@ runs the rest in order via run_cell.py.  Safe to kill and restart: at most the
 in-flight cell is lost, because run_cell.py appends its ledger row the moment a
 cell finishes.
 
-    py campaign/run_queue.py            # run everything outstanding
-    py campaign/run_queue.py --list     # show the queue and stop
-    py campaign/run_queue.py --only cislunar lunar_surface
+    python campaign/run_queue.py            # run everything outstanding
+    python campaign/run_queue.py --list     # show the queue and stop
+    python campaign/run_queue.py --only cislunar lunar_surface
 """
 import csv
 import os
@@ -21,13 +21,6 @@ CAMP = os.path.join(ROOT, "campaign")
 LEDGER = os.path.join(CAMP, "results.csv")
 
 # best case first, then work outward; cheapest cell first within a destination
-#
-# ⚠️  THIS IS THE 20-CELL CAMPAIGN'S FIVE, NOT EVERY DESTINATION THE MODEL HAS.
-# `mars_orbit` (calc 1.18.0) and `geo` (calc 1.19.0) are missing on purpose:
-# this list is what campaign/README.md pins its stamps to, and adding two
-# destinations turns a 26.1 h campaign into a 28-cell one of roughly 35 h.
-# Widening it is a decision, not a fix.  `master.DELIVERY_DESTINATIONS` is the
-# live list if you want all of them.
 DESTS = ["cislunar", "lunar_surface", "leo", "mars_surface", "earth_surface"]
 CELLS = [("raw", "off"), ("raw", "on"), ("benef", "off"), ("benef", "on")]
 
@@ -79,7 +72,8 @@ def main():
     for i, (d, o, s) in enumerate(todo, 1):
         print(f"\n{'=' * 78}\n[{i}/{len(todo)}] {d} | {o} | search-{s}"
               f" | elapsed {(time.time()-t_start)/3600:.2f} h\n{'=' * 78}", flush=True)
-        rc = subprocess.call(["py", os.path.join(CAMP, "run_cell.py"), d, o, s], cwd=ROOT)
+        rc = subprocess.call([sys.executable, os.path.join(CAMP, "run_cell.py"), d, o, s],
+                             cwd=ROOT)
         if rc != 0:
             print(f"!! cell failed (rc={rc}) -- continuing to next cell", flush=True)
     print(f"\nqueue finished in {(time.time()-t_start)/3600:.2f} h", flush=True)
