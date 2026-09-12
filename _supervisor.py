@@ -35,6 +35,8 @@ import os
 import subprocess
 import sys
 
+import psutil
+
 DETACHED_PROCESS = 0x00000008
 CREATE_NEW_PROCESS_GROUP = 0x00000200
 CREATE_NO_WINDOW = 0x08000000
@@ -46,6 +48,56 @@ TARGET = os.path.join(ROOT, "campaign", sys.argv[1] if len(sys.argv) > 1 else "r
 # `pythonw.exe` would start a windowless interpreter but the CHILD is what has
 # to be console-free, so the flags below are what matter, not this name.
 exe = sys.executable.replace("pythonw.exe", "python.exe")
+
+
+def already_running(script):
+    """PID of a live process already running `script`, or None.
+
+    The tasks carry an AtLogOn trigger so a reboot resumes the campaign by
+    itself -- the machine went down mid-cell on 2026-09-11 and sat idle five
+    hours because nothing restarted it.  That trigger also fires on an ordinary
+    log off and on, though, and a SECOND queue would race the first for one
+    `profitability_catalog.csv` and one ledger.  Two runs writing one output
+    file is a corrupted cell that still reports rc 0, which is the quiet wrong
+    answer this repo names as its fifth defect class.
+
+    `MultipleInstances IgnoreNew` on the task cannot cover this: the supervisor
+    exits as soon as it has spawned, so the TASK is never running when the
+    trigger fires again -- only the detached grandchild is.  The check has to
+    look at processes, not at the scheduler.
+
+    ⚠️  The target's name has to be matched as the script being RUN, not merely
+    as a word on the command line.  This supervisor is invoked as
+    `_supervisor.py run_queue.py`, so its own cmdline contains the target, and
+    `py` compounds it: the launcher spawns python.exe with the SAME arguments,
+    so a naive substring test finds the launcher, excluding self is not enough,
+    and the guard then refuses to start anything at all.  Measured, not
+    predicted -- the first version reported a different phantom pid on each
+    call.  Any process whose cmdline names this supervisor is an invocation of
+    it, never the work it starts.
+    """
+    me = os.getpid()
+    for proc in psutil.process_iter(["cmdline"]):
+        try:
+            if proc.pid == me:
+                continue
+            parts = [str(part) for part in (proc.info["cmdline"] or ())]
+            if any("_supervisor" in part for part in parts):
+                continue
+            if any(part.endswith(script) for part in parts):
+                return proc.pid
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    return None
+
+
+running = already_running(os.path.basename(TARGET))
+if running is not None:
+    with open(LOG, "a", encoding="utf-8", errors="replace") as fh:
+        fh.write(f"      supervisor: {os.path.basename(TARGET)} already running as "
+                 f"pid {running}; not starting a second one\n")
+    print(f"{os.path.basename(TARGET)} already running as pid {running}; nothing to do")
+    raise SystemExit(0)
 
 with open(LOG, "a", encoding="utf-8", errors="replace") as fh:
     fh.write(f"\n===== detached (no console) start: {os.path.basename(TARGET)} =====\n")
