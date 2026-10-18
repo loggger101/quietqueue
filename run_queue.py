@@ -53,13 +53,21 @@ def main():
     """Run every outstanding cell in order, one subprocess each.
 
     A failed cell does NOT stop the queue: over a campaign measured in days, one
-    cell that cannot build is worth far less than the nineteen behind it, and
+    cell that cannot build is worth far less than the cells behind it, and
     the ledger records the failure for a later retry.
     """
     args = sys.argv[1:]
     only = []
     if "--only" in args:
-        only = args[args.index("--only") + 1:]
+        only = [a for a in args[args.index("--only") + 1:] if a != "--list"]
+        # A misspelt name used to match nothing and report an empty queue as
+        # "nothing outstanding", exit 0: a campaign that ran no cell and said
+        # it was finished.
+        unknown = [d for d in only if d not in DESTS]
+        if unknown or not only:
+            print(f"--only takes destinations from: {' '.join(DESTS)}"
+                  f"{'; not ' + ' '.join(unknown) if unknown else ''}")
+            return 2
     queue = [c for c in QUEUE if not only or c[0] in only]
 
     done = done_cells()
