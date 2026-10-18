@@ -21,11 +21,11 @@ CAMP = os.path.join(ROOT, "campaign")
 LEDGER = os.path.join(CAMP, "results.csv")
 
 # Best case first, then work outward; cheapest cell first within a destination.
-# `geo` and `mars_orbit` are third and fourth deliberately rather than last:
-# they are the two destinations no cell has ever been run at, so their cost and
-# their evaluable-row count are the only unknowns in the queue, and a campaign
-# measured in days should learn its unknowns early.  The five behind them have
-# a measured 2026-08 wall clock to be read against.
+# `geo` and `mars_orbit` are third and fourth rather than last because, when
+# the 2026-09 campaign was queued, no cell had ever been run at either, and a
+# campaign measured in days should learn its unknowns early.  That campaign
+# measured them (MEASURED_DEST_SECONDS), so the order is kept for continuity,
+# not need.  `gto` joins this list only once a cell is measured.
 DESTS = ["cislunar", "lunar_surface", "geo", "mars_orbit",
          "leo", "mars_surface", "earth_surface"]
 CELLS = [("raw", "off"), ("raw", "on"), ("benef", "off"), ("benef", "on")]
