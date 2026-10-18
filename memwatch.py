@@ -50,8 +50,11 @@ def main():
             n = 0
             for p in psutil.process_iter(["name", "memory_info"]):
                 try:
-                    if "python" in (p.info["name"] or "").lower():
-                        r = p.info["memory_info"].rss / 1e9
+                    # process_iter fills a DENIED attribute with None rather
+                    # than raising, so another account's python reads as None.
+                    mi = p.info["memory_info"]
+                    if mi is not None and "python" in (p.info["name"] or "").lower():
+                        r = mi.rss / 1e9
                         tot += r
                         mx = max(mx, r)
                         n += 1
