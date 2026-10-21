@@ -12,7 +12,7 @@ quietqueue is four small pieces that each closed one of those:
 - **`run_queue`** runs a list of jobs one subprocess each, and skips every job
   a ledger already records as done, so killing and restarting it costs at most
   the job in flight. A failed job is retried on the next run, never skipped.
-- **`supervise`** starts the queue with **no console**, which is the only thing
+- **`supervise`** starts the queue with no console, which is the only thing
   that keeps a console control event from reaching it, then exits at once. It
   refuses to start a second copy while one runs.
 - **`watch`** samples a family of processes' memory into a CSV every few
@@ -109,7 +109,8 @@ supervisor exits 0 without starting anything when the queue is already running.
 
 ## Why it looks the way it does
 
-Each of these was a real failure of the campaign this came from.
+Each of these was met on the campaign this came from, except the venv
+launcher, which turned up while testing this package.
 
 - **What delivers a console control event is the console, not the parent.**
   The queue died twice: once as a child of an agent's shell (session teardown,
@@ -127,18 +128,18 @@ Each of these was a real failure of the campaign this came from.
   signature that includes the watcher dying is the machine, not the queue; the
   event log (Kernel-Power 41, 6008) confirms it. Its stamp of the shutdown
   lags the crash.
-- **The single-instance guard looks at processes, not at the scheduler.** The
-  logon trigger fires on every log off and on, and two queues writing one
-  output file is a corrupted job that still reports `rc 0`.
-  `MultipleInstances IgnoreNew` cannot help: the supervisor exits as soon as it
-  spawns, so the task is never running when the trigger fires again.
-- **The guard matches the script being run, not a word on a command line.**
-  The supervisor's own command line names the target, and the `py` launcher and
-  the Microsoft Store `python` alias each spawn the real interpreter with the
-  same arguments, so a substring test found the launcher and refused to start
-  anything (a different phantom pid on each call). It skips its own pid, any
-  process whose arguments equal its own, `-m quietqueue.supervisor`, and
-  `self_names`; a match is an argument whose file name **is** the target.
+- **The single-instance guard reads the process table.** The logon trigger
+  fires on every log off and on, and two queues writing one output file is a
+  corrupted job that still reports `rc 0`. `MultipleInstances IgnoreNew`
+  cannot help: the supervisor exits as soon as it spawns, so the task is never
+  running when the trigger fires again.
+- **The guard compares file names.** The supervisor's own command line names
+  the target, and the `py` launcher and the Microsoft Store `python` alias each
+  spawn the real interpreter with the same arguments, so a substring test
+  found the launcher and refused to start anything (a different phantom pid on
+  each call). It skips its own pid, any process whose arguments equal its own,
+  `-m quietqueue.supervisor`, and `self_names`; a match is an argument whose
+  file name **is** the target.
 - **A Windows venv's `python.exe` is a launcher.** It starts the base
   interpreter as an ordinary child, so detaching the launcher left the script
   itself with a console. Found while testing this package inside a venv. The
@@ -152,10 +153,10 @@ Each of these was a real failure of the campaign this came from.
   it had finished. It now exits 2.
 - **A failed job does not stop the queue.** Over days, one job that cannot run
   is worth far less than the jobs behind it.
-- **A watcher is not the queue.** Anything that only reports progress may die
-  with a session; the queue must not. Never start the queue from a monitor, a
-  notebook, an agent's background shell, or anything that puts a `cmd`
-  between it and the scheduler.
+- **Nothing that watches the queue should start it.** Anything that only
+  reports progress may die with a session; the queue must not. Never start the
+  queue from a monitor, a notebook, an agent's background shell, or anything
+  that puts a `cmd` between it and the scheduler.
 - **The memory watcher counts itself**, and anything else matching that runs
   alongside: two apparent peaks of 11.54 and 10.74 GB were an analysis script,
   not the job. Run analysis between jobs. `process_iter` reports another

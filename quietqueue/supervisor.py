@@ -18,10 +18,10 @@ it:
                                           so a Ctrl+C aimed at an unrelated
                                           foreground command reached it
 
-The second is the instructive one: Task Scheduler re-parented the process and
-the kill still arrived, because what propagates a console control event is the
-CONSOLE, not the parent. The tell was a literal `^C` written into the queue
-log, and two exit codes that both name a console event rather than a fault.
+In the second, Task Scheduler had re-parented the process and the kill still
+arrived, because what propagates a console control event is the CONSOLE, not
+the parent. The tell was a literal `^C` written into the queue log, and two
+exit codes that both name a console event rather than a fault.
 
 On Windows, DETACHED_PROCESS gives the target no console at all, so there is
 no console for an event to arrive on; CREATE_NEW_PROCESS_GROUP additionally
