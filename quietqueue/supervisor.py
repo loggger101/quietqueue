@@ -1,43 +1,40 @@
 # -*- coding: utf-8 -*-
-"""Start the campaign queue with NO CONSOLE, then exit immediately.
+"""Start a long-running script with NO CONSOLE, then exit immediately.
 
-    python.exe campaign/_supervisor.py [run_queue.py | memwatch.py]
+    python -m quietqueue.supervisor my_queue.py --log queue.log [--cwd DIR]
 
-A campaign measured in days has now been killed twice by a console control
-event, and scheduling alone did not fix it:
+or, from a script of your own, `supervise(target, log, cwd)`.
 
-    2026-09-09  rc=0x40010004  DBG_CONTROL_BREAK      queue was a child of an
-                                                      agent shell; session
-                                                      teardown took the tree
-    2026-09-11  rc=0xC000013A  STATUS_CONTROL_C_EXIT  queue was a scheduled
-                                                      task, but the task ran
-                                                      `cmd /c ...`, and that
-                                                      cmd attached to the
-                                                      SHARED console -- so a
-                                                      Ctrl+C aimed at an
-                                                      unrelated foreground
-                                                      command reached it
+Built for a queue measured in days that was killed twice by a console control
+event (economicspace's campaign, 2026-09), after scheduling it had not fixed
+it:
+
+    rc=0x40010004  DBG_CONTROL_BREAK      the queue was a child of an agent
+                                          shell; session teardown took the
+                                          tree
+    rc=0xC000013A  STATUS_CONTROL_C_EXIT  the queue was a scheduled task, but
+                                          the task ran `cmd /c ...`, and that
+                                          cmd attached to the SHARED console,
+                                          so a Ctrl+C aimed at an unrelated
+                                          foreground command reached it
 
 The second is the instructive one: Task Scheduler re-parented the process and
 the kill still arrived, because what propagates a console control event is the
-CONSOLE, not the parent.  The tell was a literal `^C` written into the queue
+CONSOLE, not the parent. The tell was a literal `^C` written into the queue
 log, and two exit codes that both name a console event rather than a fault.
 
-DETACHED_PROCESS gives the queue no console at all, so there is no console for
-an event to arrive on; CREATE_NEW_PROCESS_GROUP additionally takes it out of
-the group any Ctrl+C would be broadcast to.  Stage 4's own output already goes
-to a per-cell file, and the queue's goes to the handle opened here, so nothing
-needs a console to write to.
+On Windows, DETACHED_PROCESS gives the target no console at all, so there is
+no console for an event to arrive on; CREATE_NEW_PROCESS_GROUP additionally
+takes it out of the group any Ctrl+C would be broadcast to. Elsewhere the
+target starts in a new session, out of the terminal's process group. Its
+output goes to the log opened here, so nothing needs a console to write to.
 
-This exits as soon as the child is spawned: holding the child would give the
+This exits as soon as the child is spawned: holding the child would give a
 scheduled task something to wait on, which is the console-owning process this
-exists to avoid.
-
-`supervise()` is the part that knows nothing about the campaign: a target
-script, the log its output goes to, the directory it runs in, and the name
-this supervisor's own command line carries.  The constants below are this
-campaign's values for them, and the scheduled tasks name only this file.
+exists to avoid. Point the scheduled task at the interpreter and this module
+DIRECTLY; a `.bat` or `cmd /c` wrapper is a console owner again.
 """
+import argparse
 import os
 import subprocess
 import sys
@@ -48,69 +45,82 @@ DETACHED_PROCESS = 0x00000008
 CREATE_NEW_PROCESS_GROUP = 0x00000200
 CREATE_NO_WINDOW = 0x08000000
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CAMP = os.path.join(ROOT, "campaign")
-LOG = os.path.join(CAMP, "logs", "_queue.log")
-DEFAULT_TARGET = "run_queue.py"
-# What every invocation of this supervisor has on its command line; see
+# How this module appears on a command line when run with `-m`; see
 # `already_running` for why the guard must skip such processes.
-SELF_NAME = "_supervisor"
-
-# `pythonw.exe` would start a windowless interpreter but the CHILD is what has
-# to be console-free, so the flags below are what matter, not this name.
-exe = sys.executable.replace("pythonw.exe", "python.exe")
+MODULE_NAME = "quietqueue.supervisor"
 
 
-def already_running(script, self_name=SELF_NAME):
+def console_python(exe=None):
+    """The console interpreter beside `exe` (default `sys.executable`).
+
+    `pythonw.exe` would start a windowless interpreter, but the CHILD is what
+    has to be console-free, and the creation flags are what make it so, not
+    this name. The console one is kept so the target's output reaches the log.
+    """
+    exe = sys.executable if exe is None else exe
+    return exe.replace("pythonw.exe", "python.exe")
+
+
+def already_running(script, self_names=()):
     """PID of a live process already running `script`, or None.
 
-    The tasks carry an AtLogOn trigger so a reboot resumes the campaign by
-    itself -- the machine went down mid-cell on 2026-09-11 and sat idle five
-    hours because nothing restarted it.  That trigger also fires on an ordinary
-    log off and on, though, and a SECOND queue would race the first for one
-    `profitability_catalog.csv` and one ledger.  Two runs writing one output
-    file is a corrupted cell that still reports rc 0, which is the quiet wrong
-    answer this repo names as its fifth defect class.
+    A scheduled task that resumes the queue at logon (so a reboot does not
+    leave it idle for hours, as one did) also fires on an ordinary log off and
+    on, and a SECOND queue would race the first for its output files and its
+    ledger: a corrupted job that still reports rc 0.
 
     `MultipleInstances IgnoreNew` on the task cannot cover this: the supervisor
     exits as soon as it has spawned, so the TASK is never running when the
-    trigger fires again -- only the detached grandchild is.  The check has to
-    look at processes, not at the scheduler.
+    trigger fires again; only the detached grandchild is. The check has to look
+    at processes, not at the scheduler.
 
-    ⚠️  The target's name has to be matched as the script being RUN, not merely
-    as a word on the command line.  This supervisor is invoked as
-    `_supervisor.py run_queue.py`, so its own cmdline contains the target, and
-    `py` compounds it: the launcher spawns python.exe with the SAME arguments,
-    so a naive substring test finds the launcher, excluding self is not enough,
-    and the guard then refuses to start anything at all.  Measured, not
-    predicted -- the first version reported a different phantom pid on each
-    call.  Any process whose cmdline names this supervisor (`self_name`) is an
-    invocation of it, never the work it starts.
+    [!] The target has to be matched as the script being RUN, not merely as a
+    word on the command line. A supervisor invoked as `supervise.py
+    my_queue.py` has the target on its own command line, and the `py` launcher
+    and the Microsoft Store `python` alias compound it: each spawns the real
+    python.exe with the SAME arguments, so a naive substring test finds the
+    launcher, excluding this pid is not enough, and the guard then refuses to
+    start anything at all (measured in economicspace: the first version
+    reported a different phantom pid on each call). So a process is skipped
+    when its arguments equal this one's, when it runs this module with `-m`,
+    or when an argument contains one of `self_names` (the name of a script of
+    yours that calls `supervise`). A process runs `script` when an argument's
+    file name IS `script`, not merely ends with it.
     """
     me = os.getpid()
+    try:
+        my_args = [str(part) for part in psutil.Process(me).cmdline()[1:]]
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        my_args = None
     for proc in psutil.process_iter(["cmdline"]):
         try:
             if proc.pid == me:
                 continue
             parts = [str(part) for part in (proc.info["cmdline"] or ())]
-            if any(self_name in part for part in parts):
+            if my_args is not None and parts[1:] == my_args:
                 continue
-            if any(part.endswith(script) for part in parts):
+            if MODULE_NAME in parts:
+                continue
+            if any(name in part for name in self_names for part in parts):
+                continue
+            if any(os.path.basename(part) == script for part in parts):
                 return proc.pid
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
     return None
 
 
-def supervise(target, log=LOG, cwd=ROOT, self_name=SELF_NAME):
-    """Start `target` detached from every console; return its pid.
+def supervise(target, log, cwd=None, self_names=(), exe=None):
+    """Start the script `target` detached from every console; return its pid.
 
     Returns None, starting nothing, when a process is already running a script
-    of the same name, and says so in `log` and on stdout.  `target`'s output
-    goes to `log`, appended, between a start banner and its pid.
+    of the same file name, and says so in `log` and on stdout. The target's
+    output is appended to `log`, after a start banner and its pid. `cwd` is
+    the directory it runs in (default: this process's); `exe` the interpreter
+    (default: the console one beside `sys.executable`).
     """
     name = os.path.basename(target)
-    running = already_running(name, self_name)
+    running = already_running(name, self_names)
     if running is not None:
         with open(log, "a", encoding="utf-8", errors="replace") as fh:
             fh.write(f"      supervisor: {name} already running as "
@@ -118,17 +128,22 @@ def supervise(target, log=LOG, cwd=ROOT, self_name=SELF_NAME):
         print(f"{name} already running as pid {running}; nothing to do")
         return None
 
+    if os.name == "nt":
+        detach = {"creationflags": DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+                  | CREATE_NO_WINDOW}
+    else:
+        detach = {"start_new_session": True}
     with open(log, "a", encoding="utf-8", errors="replace") as fh:
         fh.write(f"\n===== detached (no console) start: {name} =====\n")
         fh.flush()
         proc = subprocess.Popen(
-            [exe, target],
+            [console_python(exe), target],
             cwd=cwd,
             stdout=fh,
             stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL,
-            creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
             close_fds=True,
+            **detach,
         )
         fh.write(f"      pid {proc.pid}\n")
 
@@ -137,13 +152,18 @@ def supervise(target, log=LOG, cwd=ROOT, self_name=SELF_NAME):
 
 
 def main(argv=None):
-    """Supervise `campaign/<argv[0]>`, `run_queue.py` when none is given.
+    """`python -m quietqueue.supervisor TARGET --log LOG [--cwd DIR]`.
 
     Exits 0 whether it started the target or found it already running, which
-    is what lets the AtLogOn trigger fire on every logon.
+    is what lets a logon trigger fire on every logon.
     """
-    args = sys.argv[1:] if argv is None else list(argv)
-    supervise(os.path.join(CAMP, args[0] if args else DEFAULT_TARGET))
+    p = argparse.ArgumentParser(prog="python -m quietqueue.supervisor",
+                                description="Start TARGET with no console and exit.")
+    p.add_argument("target", help="the script to run")
+    p.add_argument("--log", required=True, help="file the target's output is appended to")
+    p.add_argument("--cwd", default=None, help="directory the target runs in")
+    a = p.parse_args(argv)
+    supervise(os.path.abspath(a.target), a.log, cwd=a.cwd)
     return 0
 
 

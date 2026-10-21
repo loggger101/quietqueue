@@ -1,50 +1,54 @@
 <#
 .SYNOPSIS
-  Freeze or unfreeze the running campaign without losing the in-flight cell.
+  Freeze or unfreeze a running queue without losing the in-flight job.
 
 .DESCRIPTION
-  A campaign cell is 0.5-8 h of compute that writes NOTHING until it finishes,
-  so killing the queue mid-cell throws that cell away entirely.  Suspending the
-  process tree frees every core immediately and keeps the work: Windows also
-  trims a suspended process's working set, so the tree held 0.4 GB rather than
-  the ~25 GB it had resident (measured 2026-09-12, pausing leo benef+search
-  5.7 h in).
+  A job that writes NOTHING until it finishes is lost entirely if the queue is
+  killed mid-job.  Suspending the process tree frees every core immediately and
+  keeps the work: Windows also trims a suspended process's working set, so in
+  economicspace's campaign a 16-process tree 5.7 h into a cell held 0.4 GB
+  rather than the ~25 GB it had resident.
 
   Processes are found by command line, never by a remembered pid, because pids
   do not survive the pause they are meant to outlive.
 
-  [!]  A reboot while suspended loses the in-flight cell, exactly as killing it
-  would -- the queue resumes at that cell from the beginning.  Everything
-  already in campaign/results.csv with rc == 0 is safe on disk either way.
+  [!]  A reboot while suspended loses the in-flight job, exactly as killing it
+  would.  A queue that resumes from a ledger restarts that job from the
+  beginning.
 
-  Every parameter but -Resume defaults to this campaign's value, so the two
-  examples below are all the campaign needs.
+  [!]  A suspend-based pause inflates any wall clock measured across it.
 
 .PARAMETER Resume
   Thaw instead of freeze.
 
 .PARAMETER Match
   Command-line patterns (PowerShell -like) naming the roots of the trees to
-  freeze; every descendant of a root is frozen with it.
+  freeze; every descendant of a root is frozen with it.  Required.
 
 .PARAMETER ProcessName
   The WQL LIKE pattern for the process names searched, roots and descendants
   alike.
 
 .PARAMETER TaskName
-  The scheduled task whose reboot trigger tracks the pause.  Empty, or a task
-  this machine does not have, leaves the scheduler alone and says so.
+  A scheduled task whose trigger tracks the pause: disabled on freeze, enabled
+  on resume, so a logon trigger cannot restart a paused queue behind your
+  back.  Empty, or a task this machine does not have, leaves the scheduler
+  alone and says so.
 
 .EXAMPLE
-  powershell -File campaign\_pause.ps1            # freeze
-  powershell -File campaign\_pause.ps1 -Resume    # thaw and carry on
+  powershell -File pause.ps1 -Match '*my_queue*','*memwatch*' -TaskName my_queue
+  powershell -File pause.ps1 -Match '*my_queue*','*memwatch*' -TaskName my_queue -Resume
 #>
 param(
   [switch]$Resume,
-  [string[]]$Match = @('*run_queue*', '*memwatch*'),
+  [string[]]$Match = @(),
   [string]$ProcessName = 'python%',
-  [string]$TaskName = 'economicspace_campaign'
+  [string]$TaskName = ''
 )
+
+# Not [Parameter(Mandatory)]: a mandatory parameter PROMPTS when missing, and a
+# prompt hangs a script run from a scheduler or another program.
+if (-not $Match) { Write-Host "pause.ps1: -Match is required (see Get-Help pause.ps1 -Full)"; exit 2 }
 
 Add-Type -Name Nt -Namespace W -MemberDefinition @'
 [DllImport("ntdll.dll")] public static extern uint NtSuspendProcess(IntPtr h);
@@ -62,7 +66,7 @@ foreach ($p in $all) {
 $roots = @(foreach ($p in $all) {
   foreach ($m in $Match) { if ($p.CommandLine -like $m) { $p; break } }
 })
-if (-not $roots) { Write-Host "no campaign processes found - nothing to do"; exit 0 }
+if (-not $roots) { Write-Host "no matching processes found - nothing to do"; exit 0 }
 
 $targets = New-Object System.Collections.ArrayList
 function Collect($proc) {
@@ -80,15 +84,10 @@ foreach ($t in $targets) {
   [void][W.Nt]::CloseHandle($h)
 }
 
-# The AtLogOn trigger is what restarts the campaign after a reboot, so it
-# tracks the pause: leaving it armed while paused would resume the campaign
-# behind your back at the next logon.  A machine without the task (the other
-# host, or one that never registered it) used to get an error here after the
-# processes had already been frozen; it now gets a line saying so.
 $task = if ($TaskName) { Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue }
 if (-not $task) {
   $named = if ($TaskName) { "no scheduled task '$TaskName' here" } else { "no scheduled task named" }
-  Write-Host "$named - reboot trigger left alone"
+  Write-Host "$named - its trigger left alone"
 }
-elseif ($Resume) { Enable-ScheduledTask  -TaskName $TaskName | Out-Null; Write-Host "reboot trigger re-armed" }
-else             { Disable-ScheduledTask -TaskName $TaskName | Out-Null; Write-Host "reboot trigger disarmed" }
+elseif ($Resume) { Enable-ScheduledTask  -TaskName $TaskName | Out-Null; Write-Host "trigger re-armed" }
+else             { Disable-ScheduledTask -TaskName $TaskName | Out-Null; Write-Host "trigger disarmed" }
