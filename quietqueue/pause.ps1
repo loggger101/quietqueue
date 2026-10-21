@@ -68,8 +68,15 @@ $roots = @(foreach ($p in $all) {
 })
 if (-not $roots) { Write-Host "no matching processes found - nothing to do"; exit 0 }
 
+# Each process once.  A launcher and the interpreter it starts (the py
+# launcher, the Store alias, a venv's python.exe) carry the same command line,
+# so both are roots and the second's tree is also the first's; suspending it
+# twice was symmetric with resuming it twice, but the count printed was wrong.
 $targets = New-Object System.Collections.ArrayList
+$seen = @{}
 function Collect($proc) {
+  if ($seen[$proc.ProcessId]) { return }
+  $seen[$proc.ProcessId] = $true
   [void]$targets.Add($proc)
   foreach ($c in $byParent[$proc.ProcessId]) { Collect $c }
 }

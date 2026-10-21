@@ -61,6 +61,36 @@ def console_python(exe=None):
     return exe.replace("pythonw.exe", "python.exe")
 
 
+def real_interpreter(exe):
+    """The interpreter to spawn for `exe`, and the environment it needs.
+
+    On Windows a venv's `python.exe` is a LAUNCHER: it starts the base
+    interpreter as an ordinary child, so the launcher is detached and the
+    script, running in that child, has a console again (measured: the
+    child's console process list was 1, against 0 for a direct start). So
+    for a venv interpreter (one with a `pyvenv.cfg` naming `home` beside its
+    folder) this returns the base interpreter in `home` and
+    `__PYVENV_LAUNCHER__` set to `exe`, which is what the launcher itself
+    passes, and under which the base interpreter runs as the venv (its
+    `sys.prefix` and site-packages). Anything else is returned as given.
+    """
+    if os.name != "nt":
+        return exe, {}
+    cfg = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(exe))), "pyvenv.cfg")
+    try:
+        with open(cfg, encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except OSError:
+        return exe, {}
+    for line in lines:
+        name, sep, value = line.partition("=")
+        if sep and name.strip().lower() == "home":
+            base = os.path.join(value.strip(), os.path.basename(exe))
+            if os.path.isfile(base):
+                return base, {"__PYVENV_LAUNCHER__": exe}
+    return exe, {}
+
+
 def already_running(script, self_names=()):
     """PID of a live process already running `script`, or None.
 
@@ -117,7 +147,8 @@ def supervise(target, log, cwd=None, self_names=(), exe=None):
     of the same file name, and says so in `log` and on stdout. The target's
     output is appended to `log`, after a start banner and its pid. `cwd` is
     the directory it runs in (default: this process's); `exe` the interpreter
-    (default: the console one beside `sys.executable`).
+    (default: the console one beside `sys.executable`; a venv's is started
+    through its base interpreter, see `real_interpreter`).
     """
     name = os.path.basename(target)
     running = already_running(name, self_names)
@@ -133,12 +164,15 @@ def supervise(target, log, cwd=None, self_names=(), exe=None):
                   | CREATE_NO_WINDOW}
     else:
         detach = {"start_new_session": True}
+    interpreter, extra_env = real_interpreter(console_python(exe))
+    env = dict(os.environ, **extra_env) if extra_env else None
     with open(log, "a", encoding="utf-8", errors="replace") as fh:
         fh.write(f"\n===== detached (no console) start: {name} =====\n")
         fh.flush()
         proc = subprocess.Popen(
-            [console_python(exe), target],
+            [interpreter, target],
             cwd=cwd,
+            env=env,
             stdout=fh,
             stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL,
