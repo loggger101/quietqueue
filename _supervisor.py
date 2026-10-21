@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Start the campaign queue with NO CONSOLE, then exit immediately.
 
+    python.exe campaign/_supervisor.py [run_queue.py | memwatch.py]
+
 A campaign measured in days has now been killed twice by a console control
 event, and scheduling alone did not fix it:
 
@@ -30,6 +32,11 @@ needs a console to write to.
 This exits as soon as the child is spawned: holding the child would give the
 scheduled task something to wait on, which is the console-owning process this
 exists to avoid.
+
+`supervise()` is the part that knows nothing about the campaign: a target
+script, the log its output goes to, the directory it runs in, and the name
+this supervisor's own command line carries.  The constants below are this
+campaign's values for them, and the scheduled tasks name only this file.
 """
 import os
 import subprocess
@@ -42,15 +49,19 @@ CREATE_NEW_PROCESS_GROUP = 0x00000200
 CREATE_NO_WINDOW = 0x08000000
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LOG = os.path.join(ROOT, "campaign", "logs", "_queue.log")
-TARGET = os.path.join(ROOT, "campaign", sys.argv[1] if len(sys.argv) > 1 else "run_queue.py")
+CAMP = os.path.join(ROOT, "campaign")
+LOG = os.path.join(CAMP, "logs", "_queue.log")
+DEFAULT_TARGET = "run_queue.py"
+# What every invocation of this supervisor has on its command line; see
+# `already_running` for why the guard must skip such processes.
+SELF_NAME = "_supervisor"
 
 # `pythonw.exe` would start a windowless interpreter but the CHILD is what has
 # to be console-free, so the flags below are what matter, not this name.
 exe = sys.executable.replace("pythonw.exe", "python.exe")
 
 
-def already_running(script):
+def already_running(script, self_name=SELF_NAME):
     """PID of a live process already running `script`, or None.
 
     The tasks carry an AtLogOn trigger so a reboot resumes the campaign by
@@ -73,8 +84,8 @@ def already_running(script):
     so a naive substring test finds the launcher, excluding self is not enough,
     and the guard then refuses to start anything at all.  Measured, not
     predicted -- the first version reported a different phantom pid on each
-    call.  Any process whose cmdline names this supervisor is an invocation of
-    it, never the work it starts.
+    call.  Any process whose cmdline names this supervisor (`self_name`) is an
+    invocation of it, never the work it starts.
     """
     me = os.getpid()
     for proc in psutil.process_iter(["cmdline"]):
@@ -82,7 +93,7 @@ def already_running(script):
             if proc.pid == me:
                 continue
             parts = [str(part) for part in (proc.info["cmdline"] or ())]
-            if any("_supervisor" in part for part in parts):
+            if any(self_name in part for part in parts):
                 continue
             if any(part.endswith(script) for part in parts):
                 return proc.pid
@@ -91,26 +102,50 @@ def already_running(script):
     return None
 
 
-running = already_running(os.path.basename(TARGET))
-if running is not None:
-    with open(LOG, "a", encoding="utf-8", errors="replace") as fh:
-        fh.write(f"      supervisor: {os.path.basename(TARGET)} already running as "
-                 f"pid {running}; not starting a second one\n")
-    print(f"{os.path.basename(TARGET)} already running as pid {running}; nothing to do")
-    raise SystemExit(0)
+def supervise(target, log=LOG, cwd=ROOT, self_name=SELF_NAME):
+    """Start `target` detached from every console; return its pid.
 
-with open(LOG, "a", encoding="utf-8", errors="replace") as fh:
-    fh.write(f"\n===== detached (no console) start: {os.path.basename(TARGET)} =====\n")
-    fh.flush()
-    proc = subprocess.Popen(
-        [exe, TARGET],
-        cwd=ROOT,
-        stdout=fh,
-        stderr=subprocess.STDOUT,
-        stdin=subprocess.DEVNULL,
-        creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
-        close_fds=True,
-    )
-    fh.write(f"      pid {proc.pid}\n")
+    Returns None, starting nothing, when a process is already running a script
+    of the same name, and says so in `log` and on stdout.  `target`'s output
+    goes to `log`, appended, between a start banner and its pid.
+    """
+    name = os.path.basename(target)
+    running = already_running(name, self_name)
+    if running is not None:
+        with open(log, "a", encoding="utf-8", errors="replace") as fh:
+            fh.write(f"      supervisor: {name} already running as "
+                     f"pid {running}; not starting a second one\n")
+        print(f"{name} already running as pid {running}; nothing to do")
+        return None
 
-print(f"spawned {os.path.basename(TARGET)} as pid {proc.pid}, detached")
+    with open(log, "a", encoding="utf-8", errors="replace") as fh:
+        fh.write(f"\n===== detached (no console) start: {name} =====\n")
+        fh.flush()
+        proc = subprocess.Popen(
+            [exe, target],
+            cwd=cwd,
+            stdout=fh,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
+            close_fds=True,
+        )
+        fh.write(f"      pid {proc.pid}\n")
+
+    print(f"spawned {name} as pid {proc.pid}, detached")
+    return proc.pid
+
+
+def main(argv=None):
+    """Supervise `campaign/<argv[0]>`, `run_queue.py` when none is given.
+
+    Exits 0 whether it started the target or found it already running, which
+    is what lets the AtLogOn trigger fire on every logon.
+    """
+    args = sys.argv[1:] if argv is None else list(argv)
+    supervise(os.path.join(CAMP, args[0] if args else DEFAULT_TARGET))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
