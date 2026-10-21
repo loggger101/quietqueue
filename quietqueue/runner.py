@@ -11,7 +11,7 @@ and then, from the script that holds those lines:
 
     python my_queue.py                    # run everything outstanding
     python my_queue.py --list             # show the queue and stop
-    python my_queue.py --only cislunar    # only these groups
+    python my_queue.py --only south       # only these groups
 
 Each job is one subprocess. The ledger is a CSV the JOB writes, one row per
 finished job, carrying the job's key (in the column `key` names, `job` by
