@@ -1,0 +1,53 @@
+[build-system]
+# 77 is the first setuptools that reads PEP 639's `license = "MIT"` string and
+# `license-files`.
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quietqueue"
+dynamic = ["version"]
+description = "Run a queue of long jobs unattended on Windows: resumable from a ledger, started with no console, guarded against a second copy, memory-sampled, and pausable without losing the job in flight."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Logan M Edwards" }]
+keywords = [
+    "queue", "batch", "unattended", "windows", "task-scheduler",
+    "detached-process", "console", "resumable", "psutil",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Distributed Computing",
+    "Topic :: Utilities",
+]
+
+# The supervisor's single-instance guard and the memory watcher read the
+# process table; nothing else is imported (tests hold it to that).
+dependencies = ["psutil>=5.9"]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
+[project.urls]
+Repository = "https://github.com/loggger101/quietqueue"
+
+[tool.setuptools]
+packages = ["quietqueue"]
+
+# pause.ps1 ships inside the package; `quietqueue.pause_script()` finds it.
+[tool.setuptools.package-data]
+quietqueue = ["pause.ps1"]
+
+[tool.setuptools.dynamic]
+version = { attr = "quietqueue.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
