@@ -3,8 +3,8 @@
 
     from quietqueue import Job, run_queue
 
-    jobs = [Job("cislunar__raw", "cislunar", ("cislunar", "raw"),
-                [sys.executable, "run_cell.py", "cislunar", "raw"]), ...]
+    jobs = [Job("north__fast", "north", ("north", "fast"),
+                [sys.executable, "run_one.py", "north", "fast"]), ...]
     sys.exit(run_queue(jobs, "results.csv"))
 
 and then, from the script that holds those lines:

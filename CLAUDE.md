@@ -30,6 +30,8 @@ Rules:
   and end the command with `exit $LASTEXITCODE`.
 - **The version is written once**, `quietqueue.__version__`; `pyproject.toml`
   reads it. A release bumps it, adds a CHANGELOG entry, and tags `vX.Y.Z`.
-  Consumers pin the tag (economicspace's campaign shims).
+  Consumers pin the tag (economicspace: `requirements-campaign.txt`, and its
+  `campaign/quietqueue_pin.py` refuses any other installed version rather
+  than installing one).
 - The tree lives in OneDrive. `*-DESKTOP-*` files are sync-conflict copies:
   diff, then delete; never commit one. Never `git stash`.
