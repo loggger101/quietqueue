@@ -34,4 +34,6 @@ Rules:
   `campaign/quietqueue_pin.py` refuses any other installed version rather
   than installing one).
 - The tree lives in OneDrive. `*-DESKTOP-*` files are sync-conflict copies:
-  diff, then delete; never commit one. Never `git stash`.
+  diff, then delete; never commit one. Never `git stash`. `.githooks/` is
+  samebytes' stat-cache hook (opt in with `git config core.hooksPath
+  .githooks`); CI's `hooks` job holds the copies to the samebytes tag it names.
