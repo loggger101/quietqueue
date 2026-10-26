@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+No code or printed output changed; nothing a consumer pinning v0.1.0 runs is
+different.
+
+- `.githooks/`: samebytes' stat-cache hook (this tree lives in OneDrive), its
+  `eol=lf` pin in `.gitattributes`, and a CI job, `hooks`, that holds the
+  copies to the samebytes tag it names.
+- CI: `actions/checkout` and `actions/setup-python` at v7, which run on
+  Node.js 24; v4 and v5 targeted Node.js 20, which the runners deprecate.
+- `pyproject.toml`: Changelog and Issues links, and the macOS and monitoring
+  classifiers.
+- README and docstrings: the traps' headings as plain statements, and the
+  runner's usage example as generic as the README's (it still named the
+  campaign's group and `run_cell.py`). CLAUDE.md names the consumer's pin
+  files.
+
 ## v0.1.0 (2026-10-20)
 
 First release: economicspace's campaign runner (`campaign/run_queue.py`,
