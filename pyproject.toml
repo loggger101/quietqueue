@@ -24,8 +24,10 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX",
+    "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
     "Topic :: System :: Distributed Computing",
+    "Topic :: System :: Monitoring",
     "Topic :: Utilities",
 ]
 
@@ -38,6 +40,8 @@ test = ["pytest>=7.0"]
 
 [project.urls]
 Repository = "https://github.com/loggger101/quietqueue"
+Changelog = "https://github.com/loggger101/quietqueue/blob/main/CHANGELOG.md"
+Issues = "https://github.com/loggger101/quietqueue/issues"
 
 [tool.setuptools]
 packages = ["quietqueue"]
