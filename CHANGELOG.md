@@ -12,6 +12,9 @@ different.
   Node.js 24; v4 and v5 targeted Node.js 20, which the runners deprecate.
 - `pyproject.toml`: Changelog and Issues links, and the macOS and monitoring
   classifiers.
+- `tests/test_rules.py` runs its rules through `samebytes.source` (v0.3.0, a
+  test extra), the copy the family shares. The import rule now answers on
+  Python 3.9 instead of skipping there.
 - README and docstrings: the traps' headings as plain statements, and the
   runner's usage example as generic as the README's (it still named the
   campaign's group and `run_cell.py`). CLAUDE.md names the consumer's pin

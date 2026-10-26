@@ -6,8 +6,9 @@ its reason beside it; README's "Why it looks the way it does" is the list.
 Rules:
 
 - **psutil and the standard library only, ASCII only, a docstring on every
-  definition.** `tests/test_rules.py` enforces all three. The supervisor is
-  the one process that must not fail.
+  definition.** `tests/test_rules.py` enforces all three, through
+  `samebytes.source` (a test extra). The supervisor is the one process that
+  must not fail.
 - **The queue only reads the ledger; the job writes it.** Never give
   `run_queue` a command-line flag for the ledger path, and never treat any
   `rc` but `"0"` as done.
