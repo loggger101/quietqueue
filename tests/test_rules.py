@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
-"""House rules over the package source: ASCII, docstrings, imports.
+"""House rules over the package source: ASCII, docstrings, imports, git pins.
 
-The rules are samebytes' (`samebytes.source`), the one copy the repositories
-in this family share; what they read is this package's.
+The rules are samebytes' (`samebytes.source`, `samebytes.docs`), the one copy
+the repositories in this family share; what they read is this package's.
 """
 import pathlib
 
 import pytest
-from samebytes import source
+from samebytes import docs, source
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PKG = ROOT / "quietqueue"
@@ -37,3 +37,15 @@ def test_every_definition_has_a_docstring(path):
 def test_imports_are_stdlib_or_psutil(path):
     """psutil is the one dependency; nothing else may be imported."""
     assert source.imports(str(ROOT), [str(path)], allowed=ALLOWED)[0] == []
+
+
+def test_git_pins_agree():
+    """Every `github.com/loggger101/<repo>@<ref>` names one ref per repository.
+
+    samebytes is pinned in pyproject's test extra and in CI's hooks job; the
+    hooks job sat on v0.1.0 while the test extra moved to v0.3.0. CHANGELOG is
+    left out: an old pin there is history.
+    """
+    files = ["pyproject.toml", ".github/workflows/tests.yml", "README.md", "CLAUDE.md"]
+    bad, n = docs.pins(str(ROOT), files, "loggger101")
+    assert bad == [] and n >= 3, "; ".join(bad)

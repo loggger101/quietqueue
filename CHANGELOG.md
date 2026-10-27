@@ -19,6 +19,8 @@ different.
   runner's usage example as generic as the README's (it still named the
   campaign's group and `run_cell.py`). CLAUDE.md names the consumer's pin
   files.
+- samebytes v0.5.0 in the test extra and in CI's `hooks` job, which had sat on
+  v0.1.0; `tests/test_rules.py` holds every git pin to one ref.
 
 ## v0.1.0 (2026-10-20)
 
